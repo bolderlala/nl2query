@@ -97,15 +97,20 @@ def _show_kv_result(result):
 
 def _render_graph_interactive():
     nodes_js = []
-    for s in STUDENTS:
+    spacing_y = 65
+    for i, s in enumerate(STUDENTS):
+        y = i * spacing_y
         nodes_js.append(
-            f'{{id: "s{s["id"]}", label: "{s["name"]}\\n{s["major"]}\\nGPA {s["gpa"]}", '
+            f'{{id: "s{s["id"]}", label: "{s["name"]}\\n{s["major"]} | GPA {s["gpa"]}", '
+            f'x: -300, y: {y}, fixed: false, '
             f'group: "student", title: "Student {s["id"]}\\nEmail: {s["email"]}\\nYear: {s["year"]}"}}'
         )
-    for c in COURSES:
+    course_ys = [65, 155, 245, 335, 425]
+    for i, c in enumerate(COURSES):
         nodes_js.append(
-            f'{{id: "c{c["id"]}", label: "{c["name"]}\\n{c["department"]}", '
-            f'group: "course", title: "Course {c["id"]}\\nInstructor: {c["instructor"]}\\nCredits: {c["credits"]}"}}'
+            f'{{id: "c{c["id"]}", label: "{c["name"]}\\n{c["department"]} | {c["instructor"]}", '
+            f'x: 300, y: {course_ys[i]}, fixed: false, '
+            f'group: "course", title: "Course {c["id"]}\\nCredits: {c["credits"]}"}}'
         )
     edges_js = []
     for e in ENROLLMENTS:
@@ -133,42 +138,35 @@ def _render_graph_interactive():
             student: {{
               shape: 'box',
               color: {{ background: '#B3D9F2', border: '#5BA3D9', highlight: {{ background: '#89C4F4', border: '#3498DB' }} }},
-              font: {{ size: 12, face: 'Helvetica' }},
+              font: {{ size: 11, face: 'Helvetica' }},
               borderWidth: 2,
               borderWidthSelected: 3
             }},
             course: {{
               shape: 'box',
               color: {{ background: '#B3E6B3', border: '#5BAF5B', highlight: {{ background: '#82D882', border: '#27AE60' }} }},
-              font: {{ size: 12, face: 'Helvetica' }},
+              font: {{ size: 11, face: 'Helvetica' }},
               borderWidth: 2,
               borderWidthSelected: 3
             }}
           }},
           edges: {{
-            arrows: {{ to: {{ enabled: true, scaleFactor: 0.6 }} }},
-            color: {{ color: '#999', highlight: '#E74C3C' }},
-            font: {{ size: 10, color: '#555', strokeWidth: 2, strokeColor: '#fff' }},
+            arrows: {{ to: {{ enabled: true, scaleFactor: 0.5 }} }},
+            color: {{ color: '#aaa', highlight: '#E74C3C' }},
+            font: {{ size: 9, color: '#666', strokeWidth: 2, strokeColor: '#fff' }},
             smooth: {{ type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.4 }}
           }},
-          physics: {{
-            solver: 'forceAtlas2Based',
-            forceAtlas2Based: {{ gravitationalConstant: -40, centralGravity: 0.005, springLength: 180, springConstant: 0.04 }},
-            stabilization: {{ iterations: 150 }}
-          }},
+          physics: {{ enabled: false }},
           interaction: {{
             hover: true,
             tooltipDelay: 100,
             dragNodes: true,
             dragView: true,
             zoomView: true
-          }},
-          layout: {{ improvedLayout: true }}
+          }}
         }};
         var network = new vis.Network(container, data, options);
-        network.on('stabilizationIterationsDone', function() {{
-          network.fit({{ padding: 30, animation: {{ duration: 500, easingFunction: 'easeInOutQuad' }} }});
-        }});
+        network.fit({{ padding: 40 }});
       </script>
     </body>
     </html>
