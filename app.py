@@ -186,7 +186,8 @@ def _render_schema(key, db):
 | email | | score | | department |
 | major | | semester | | credits |
 | gpa | | | | instructor |
-| year | | | | |
+| year | | | | description |
+| bio | | | | |
 """)
     elif key == "column":
         st.markdown("""
@@ -203,6 +204,7 @@ def _render_schema(key, db):
 | major | TEXT |
 | gpa | FLOAT |
 | year | INT |
+| bio | TEXT |
 
 `enrollments_by_student` — *"what courses does student X take?"*
 | Column | Type |
@@ -223,6 +225,7 @@ def _render_schema(key, db):
 | name | TEXT |
 | credits | INT |
 | instructor | TEXT |
+| description | TEXT |
 
 `enrollments_by_course` — *"who is enrolled in course Y?"*
 | Column | Type |
@@ -247,6 +250,7 @@ def _render_schema(key, db):
   "major": "Business Analytics",
   "gpa": 3.9,
   "year": 2026,
+  "bio": "Passionate about machine learning and...",
   "enrollments": [          ← nested array
     { "course_id": 101, "course_name": "Managing Big Data",
       "score": 92, "semester": "Fall 2025" },
@@ -256,7 +260,8 @@ def _render_schema(key, db):
 
 // Collection: courses
 { "_id": 101, "name": "Managing Big Data", "department": "MSBA",
-  "credits": 3, "instructor": "Prof. Li" }
+  "credits": 3, "instructor": "Prof. Li",
+  "description": "Data lakes, cloud infrastructure, and..." }
 ```
 """)
     elif key == "kv":
@@ -265,8 +270,8 @@ def _render_schema(key, db):
 
 | Key Pattern | Type | Example Value |
 |-------------|------|--------------|
-| `student:{id}` | Hash | `{name: "Alice Chen", gpa: "3.9", ...}` |
-| `course:{id}` | Hash | `{name: "Managing Big Data", ...}` |
+| `student:{id}` | Hash | `{name: "Alice Chen", gpa: "3.9", bio: "...", ...}` |
+| `course:{id}` | Hash | `{name: "Managing Big Data", description: "...", ...}` |
 | `enrollment:{sid}:{cid}` | Hash | `{score: "92", semester: "Fall 2025"}` |
 | `student:{id}:courses` | Set | `{"101", "102", "105"}` |
 | `course:{id}:students` | Set | `{"1", "2", "4", ...}` |
@@ -286,6 +291,7 @@ def _render_schema(key, db):
 | name | → ENROLLED_IN → | name |
 | email, major | score, semester | department |
 | gpa, year | | credits, instructor |
+| bio | | course_desc |
 """)
         _render_graph_interactive()
     elif key == "vector":
@@ -331,6 +337,15 @@ def _render_schema(key, db):
         st.code(db.get_schema(), language="text")
 
 
+DB_TEACHING_NOTES = {
+    "sql": "**Relational databases** excel at filtering on any column (`WHERE gpa > 3.7`), joining tables, and aggregations. This flexibility comes from the structured schema and query optimizer.",
+    "column": "**Wide column stores** can only efficiently filter on the **partition key**. Other filters require scanning all partitions (ALLOW FILTERING), which is slow at scale. That's why we denormalize data into multiple tables — each designed for one query pattern.",
+    "document": "**Document databases** can filter on any field, including nested arrays. But without JOINs, related data must be embedded (nested) inside documents or looked up separately.",
+    "kv": "**Key-value stores** only support lookups by **exact key** — there's no way to say \"find all students where GPA > 3.7\". To answer that, you must fetch every student and filter client-side. This is the trade-off for ultra-fast O(1) key lookups.",
+    "graph": "**Graph databases** excel at traversing relationships (\"students enrolled in the same courses\") but are not optimized for bulk attribute filtering like \"GPA > 3.7\" across all nodes.",
+    "vector": "**Vector databases** search by **semantic similarity**, not exact values. A query like \"GPA above 3.7\" gets matched to student bios about academic achievement — the results may *relate* to the topic but won't give exact numeric filtering. Use relational or document databases for precise attribute queries.",
+}
+
 NO_RESULTS_HINTS = {
     "sql": "Check that table/column names match the schema exactly (students, courses, enrollments). String values need single quotes (e.g., WHERE name = 'Alice Chen').",
     "column": "CQL requires filtering on the partition key. Make sure you're querying the right table for your question (e.g., enrollments_by_student for student lookups, courses_by_department for department lookups). No JOINs allowed.",
@@ -375,6 +390,18 @@ st.sidebar.markdown("""
 | 🧭 **Vector** (ChromaDB) | Semantic similarity search |
 """)
 
+st.sidebar.divider()
+st.sidebar.markdown("### 🔗 The Real Software")
+st.sidebar.markdown("""
+| Demo | Production Software |
+|------|-------------------|
+| SQLite | [PostgreSQL](https://www.postgresql.org/) / [MySQL](https://www.mysql.com/) |
+| Cassandra | [Apache Cassandra](https://cassandra.apache.org/) / [ScyllaDB](https://www.scylladb.com/) |
+| MontyDB | [MongoDB](https://www.mongodb.com/) |
+| Redis | [Redis](https://redis.io/) / [Valkey](https://valkey.io/) |
+| Kuzu | [Neo4j](https://neo4j.com/) / [Kuzu](https://kuzudb.com/) |
+| ChromaDB | [Pinecone](https://www.pinecone.io/) / [Weaviate](https://weaviate.io/) |
+""")
 st.sidebar.divider()
 st.sidebar.markdown("### 💡 Teaching Point")
 st.sidebar.markdown(
@@ -461,10 +488,10 @@ with st.expander("📋 View the dataset & schemas for all 6 databases"):
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("**Students**")
-            st.dataframe([{"ID": s["id"], "Name": s["name"], "Major": s["major"], "GPA": s["gpa"], "Year": s["year"]} for s in STUDENTS], use_container_width=True, hide_index=True)
+            st.dataframe([{"ID": s["id"], "Name": s["name"], "Major": s["major"], "GPA": s["gpa"], "Year": s["year"], "Bio": s["bio"]} for s in STUDENTS], use_container_width=True, hide_index=True)
         with c2:
             st.markdown("**Courses**")
-            st.dataframe([{"ID": c["id"], "Name": c["name"], "Dept": c["department"], "Instructor": c["instructor"]} for c in COURSES], use_container_width=True, hide_index=True)
+            st.dataframe([{"ID": c["id"], "Name": c["name"], "Dept": c["department"], "Instructor": c["instructor"], "Description": c["description"]} for c in COURSES], use_container_width=True, hide_index=True)
         st.markdown("**Enrollments**")
         st.dataframe([{"Student": e["student_id"], "Course": e["course_id"], "Score": e["score"], "Semester": e["semester"]} for e in ENROLLMENTS], use_container_width=True, hide_index=True)
     for tab, key in zip(schema_tabs, DB_ORDER):
@@ -545,6 +572,7 @@ else:
                 except Exception as e:
                     st.error(f"Execution error: {e}")
                     st.caption(f"💡 **Hint:** {NO_RESULTS_HINTS.get(key, '')}")
+                st.info(f"💡 {DB_TEACHING_NOTES.get(key, '')}")
 
     # Run All button
     st.divider()
@@ -574,6 +602,7 @@ else:
                     except Exception as e:
                         st.error(str(e)[:100])
                         st.caption(f"💡 {NO_RESULTS_HINTS.get(key, '')}")
+                    st.caption(f"💡 {DB_TEACHING_NOTES.get(key, '')}")
             st.divider()
 
     st.divider()

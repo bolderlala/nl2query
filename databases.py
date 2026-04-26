@@ -30,8 +30,8 @@ class SQLDatabase:
     playground = "https://sqliteonline.com/"
 
     SCHEMA_TEXT = """Tables:
-  students (student_id INT PK, name TEXT, email TEXT, major TEXT, gpa REAL, year INT)
-  courses  (course_id INT PK, name TEXT, department TEXT, credits INT, instructor TEXT)
+  students (student_id INT PK, name TEXT, email TEXT, major TEXT, gpa REAL, year INT, bio TEXT)
+  courses  (course_id INT PK, name TEXT, department TEXT, credits INT, instructor TEXT, description TEXT)
   enrollments (student_id INT FK, course_id INT FK, score INT, semester TEXT)"""
 
     def __init__(self):
@@ -41,13 +41,13 @@ class SQLDatabase:
 
     def _load(self):
         c = self.conn.cursor()
-        c.execute("CREATE TABLE students (student_id INT PRIMARY KEY, name TEXT, email TEXT, major TEXT, gpa REAL, year INT)")
-        c.execute("CREATE TABLE courses (course_id INT PRIMARY KEY, name TEXT, department TEXT, credits INT, instructor TEXT)")
+        c.execute("CREATE TABLE students (student_id INT PRIMARY KEY, name TEXT, email TEXT, major TEXT, gpa REAL, year INT, bio TEXT)")
+        c.execute("CREATE TABLE courses (course_id INT PRIMARY KEY, name TEXT, department TEXT, credits INT, instructor TEXT, description TEXT)")
         c.execute("CREATE TABLE enrollments (student_id INT, course_id INT, score INT, semester TEXT, FOREIGN KEY(student_id) REFERENCES students(student_id), FOREIGN KEY(course_id) REFERENCES courses(course_id))")
         for s in STUDENTS:
-            c.execute("INSERT INTO students VALUES (?,?,?,?,?,?)", (s["id"], s["name"], s["email"], s["major"], s["gpa"], s["year"]))
+            c.execute("INSERT INTO students VALUES (?,?,?,?,?,?,?)", (s["id"], s["name"], s["email"], s["major"], s["gpa"], s["year"], s["bio"]))
         for co in COURSES:
-            c.execute("INSERT INTO courses VALUES (?,?,?,?,?)", (co["id"], co["name"], co["department"], co["credits"], co["instructor"]))
+            c.execute("INSERT INTO courses VALUES (?,?,?,?,?,?)", (co["id"], co["name"], co["department"], co["credits"], co["instructor"], co["description"]))
         for e in ENROLLMENTS:
             c.execute("INSERT INTO enrollments VALUES (?,?,?,?)", (e["student_id"], e["course_id"], e["score"], e["semester"]))
         self.conn.commit()
@@ -84,12 +84,12 @@ class ColumnFamilyDatabase:
 
 Table: students
   Partition Key: student_id (INT: 1-8)
-  Columns: name TEXT, email TEXT, major TEXT, gpa FLOAT, year INT
+  Columns: name TEXT, email TEXT, major TEXT, gpa FLOAT, year INT, bio TEXT
 
 Table: courses_by_department
   Partition Key: department (TEXT: 'MSBA', 'Darden')
   Clustering Key: course_id INT
-  Columns: name TEXT, credits INT, instructor TEXT
+  Columns: name TEXT, credits INT, instructor TEXT, description TEXT
 
 Table: enrollments_by_student
   Partition Key: student_id (INT: 1-8)
@@ -119,7 +119,7 @@ RULES:
             "partition_key": "student_id",
             "rows": [
                 {"student_id": s["id"], "name": s["name"], "email": s["email"],
-                 "major": s["major"], "gpa": s["gpa"], "year": s["year"]}
+                 "major": s["major"], "gpa": s["gpa"], "year": s["year"], "bio": s["bio"]}
                 for s in STUDENTS
             ],
         }
@@ -127,7 +127,8 @@ RULES:
             "partition_key": "department",
             "rows": [
                 {"department": c["department"], "course_id": c["id"],
-                 "name": c["name"], "credits": c["credits"], "instructor": c["instructor"]}
+                 "name": c["name"], "credits": c["credits"], "instructor": c["instructor"],
+                 "description": c["description"]}
                 for c in COURSES
             ],
         }
@@ -187,13 +188,14 @@ Document structure:
   "major": String,
   "gpa": Number,
   "year": Number,
+  "bio": String,
   "enrollments": [
     { "course_id": Number, "course_name": String, "score": Number, "semester": String }
   ]
 }
 
 Collection: courses
-{ "_id": Number, "name": String, "department": String, "credits": Number, "instructor": String }"""
+{ "_id": Number, "name": String, "department": String, "credits": Number, "instructor": String, "description": String }"""
 
     def __init__(self):
         from montydb import MontyClient
@@ -211,7 +213,7 @@ Collection: courses
             doc = {
                 "_id": s["id"], "name": s["name"], "email": s["email"],
                 "major": s["major"], "gpa": s["gpa"], "year": s["year"],
-                "enrollments": []
+                "bio": s["bio"], "enrollments": []
             }
             for e in ENROLLMENTS:
                 if e["student_id"] == s["id"]:
@@ -223,7 +225,7 @@ Collection: courses
                     })
             students_col.insert_one(doc)
         for c in COURSES:
-            courses_col.insert_one({"_id": c["id"], "name": c["name"], "department": c["department"], "credits": c["credits"], "instructor": c["instructor"]})
+            courses_col.insert_one({"_id": c["id"], "name": c["name"], "department": c["department"], "credits": c["credits"], "instructor": c["instructor"], "description": c["description"]})
 
     def run_query(self, query_str):
         try:
@@ -253,8 +255,8 @@ class KeyValueDatabase:
     playground = "https://try.redis.io/"
 
     SCHEMA_TEXT = """Key patterns (all IDs are numeric):
-  student:{id}         → Hash  {name, email, major, gpa, year}       (id: 1-8)
-  course:{id}          → Hash  {name, department, credits, instructor} (id: 101-105)
+  student:{id}         → Hash  {name, email, major, gpa, year, bio}  (id: 1-8)
+  course:{id}          → Hash  {name, department, credits, instructor, description} (id: 101-105)
   enrollment:{sid}:{cid} → Hash {score, semester}
   student:{id}:courses → Set   {course_id, ...}
   course:{id}:students → Set   {student_id, ...}
@@ -272,10 +274,10 @@ Commands: GET, HGETALL, HGET, SMEMBERS, KEYS, ZRANGEBYSCORE, ZRANGE, ZREVRANGE""
     def _load(self):
         for s in STUDENTS:
             key = f"student:{s['id']}"
-            self.store[key] = {"name": s["name"], "email": s["email"], "major": s["major"], "gpa": str(s["gpa"]), "year": str(s["year"])}
+            self.store[key] = {"name": s["name"], "email": s["email"], "major": s["major"], "gpa": str(s["gpa"]), "year": str(s["year"]), "bio": s["bio"]}
         for c in COURSES:
             key = f"course:{c['id']}"
-            self.store[key] = {"name": c["name"], "department": c["department"], "credits": str(c["credits"]), "instructor": c["instructor"]}
+            self.store[key] = {"name": c["name"], "department": c["department"], "credits": str(c["credits"]), "instructor": c["instructor"], "description": c["description"]}
         for e in ENROLLMENTS:
             ekey = f"enrollment:{e['student_id']}:{e['course_id']}"
             self.store[ekey] = {"score": str(e["score"]), "semester": e["semester"]}
@@ -387,8 +389,8 @@ class GraphDatabase:
     playground = "https://neo4j.com/sandbox"
 
     SCHEMA_TEXT = """Node labels:
-  Student (student_id INT, name STRING, email STRING, major STRING, gpa DOUBLE, year INT)
-  Course  (course_id INT, name STRING, department STRING, credits INT, instructor STRING)
+  Student (student_id INT, name STRING, email STRING, major STRING, gpa DOUBLE, year INT, bio STRING)
+  Course  (course_id INT, name STRING, department STRING, credits INT, instructor STRING, course_desc STRING)
 
 Relationship types:
   ENROLLED_IN (score INT, semester STRING)  from Student to Course"""
@@ -403,19 +405,19 @@ Relationship types:
         self._load()
 
     def _load(self):
-        self.conn.execute("CREATE NODE TABLE Student (student_id INT64, name STRING, email STRING, major STRING, gpa DOUBLE, year INT64, PRIMARY KEY(student_id))")
-        self.conn.execute("CREATE NODE TABLE Course (course_id INT64, name STRING, department STRING, credits INT64, instructor STRING, PRIMARY KEY(course_id))")
+        self.conn.execute("CREATE NODE TABLE Student (student_id INT64, name STRING, email STRING, major STRING, gpa DOUBLE, year INT64, bio STRING, PRIMARY KEY(student_id))")
+        self.conn.execute("CREATE NODE TABLE Course (course_id INT64, name STRING, department STRING, credits INT64, instructor STRING, course_desc STRING, PRIMARY KEY(course_id))")
         self.conn.execute("CREATE REL TABLE ENROLLED_IN (FROM Student TO Course, score INT64, semester STRING)")
 
         for s in STUDENTS:
             self.conn.execute(
-                "CREATE (s:Student {student_id: $id, name: $name, email: $email, major: $major, gpa: $gpa, year: $year})",
-                {"id": s["id"], "name": s["name"], "email": s["email"], "major": s["major"], "gpa": s["gpa"], "year": s["year"]}
+                "CREATE (s:Student {student_id: $id, name: $name, email: $email, major: $major, gpa: $gpa, year: $year, bio: $bio})",
+                {"id": s["id"], "name": s["name"], "email": s["email"], "major": s["major"], "gpa": s["gpa"], "year": s["year"], "bio": s["bio"]}
             )
         for c in COURSES:
             self.conn.execute(
-                "CREATE (c:Course {course_id: $id, name: $name, department: $dept, credits: $credits, instructor: $instructor})",
-                {"id": c["id"], "name": c["name"], "dept": c["department"], "credits": c["credits"], "instructor": c["instructor"]}
+                "CREATE (c:Course {course_id: $id, name: $name, department: $dept, credits: $credits, instructor: $instructor, course_desc: $cdesc})",
+                {"id": c["id"], "name": c["name"], "dept": c["department"], "credits": c["credits"], "instructor": c["instructor"], "cdesc": c["description"]}
             )
         for e in ENROLLMENTS:
             self.conn.execute(
