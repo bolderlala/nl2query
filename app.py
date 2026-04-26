@@ -543,6 +543,29 @@ else:
 
     tabs = st.tabs([f"{DB_CLASSES[k].icon} {DB_CLASSES[k].name}" for k in DB_ORDER])
 
+    @st.fragment
+    def _run_query_tab(key, db, query):
+        if st.button(f"▶ Run", key=f"run_{key}"):
+            try:
+                results = db.run_query(query)
+                if results:
+                    st.markdown(f"**Results** ({len(results)} rows):")
+                    if key == "kv":
+                        for r in results:
+                            st.caption(f"`{r['command']}`")
+                            _show_kv_result(r["result"])
+                    elif key == "document":
+                        st.json(results)
+                    else:
+                        st.dataframe(results, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Query returned no results.")
+                    st.caption(f"💡 **Hint:** {NO_RESULTS_HINTS.get(key, '')}")
+            except Exception as e:
+                st.error(f"Execution error: {e}")
+                st.caption(f"💡 **Hint:** {NO_RESULTS_HINTS.get(key, '')}")
+            st.info(f"💡 {DB_TEACHING_NOTES.get(key, '')}")
+
     for tab, key in zip(tabs, DB_ORDER):
         db = dbs[key]
         query = queries[key]
@@ -551,28 +574,8 @@ else:
                 st.caption(db.description)
                 _render_schema(key, db)
             st.markdown(f"**Generated Query:**")
-            edited = st.code(query, language=db.lang)
-
-            if st.button(f"▶ Run", key=f"run_{key}"):
-                try:
-                    results = db.run_query(query)
-                    if results:
-                        st.markdown(f"**Results** ({len(results)} rows):")
-                        if key == "kv":
-                            for r in results:
-                                st.caption(f"`{r['command']}`")
-                                _show_kv_result(r["result"])
-                        elif key == "document":
-                            st.json(results)
-                        else:
-                            st.dataframe(results, use_container_width=True, hide_index=True)
-                    else:
-                        st.info("Query returned no results.")
-                        st.caption(f"💡 **Hint:** {NO_RESULTS_HINTS.get(key, '')}")
-                except Exception as e:
-                    st.error(f"Execution error: {e}")
-                    st.caption(f"💡 **Hint:** {NO_RESULTS_HINTS.get(key, '')}")
-                st.info(f"💡 {DB_TEACHING_NOTES.get(key, '')}")
+            st.code(query, language=db.lang)
+            _run_query_tab(key, db, query)
 
     # Run All button
     st.divider()
