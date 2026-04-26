@@ -166,6 +166,9 @@ def _render_graph_interactive():
           layout: {{ improvedLayout: true }}
         }};
         var network = new vis.Network(container, data, options);
+        network.on('stabilizationIterationsDone', function() {{
+          network.fit({{ padding: 30, animation: {{ duration: 500, easingFunction: 'easeInOutQuad' }} }});
+        }});
       </script>
     </body>
     </html>
