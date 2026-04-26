@@ -252,15 +252,18 @@ class KeyValueDatabase:
     description = "Simple key-to-value mappings for ultra-fast lookups. Supports hashes, sets, and sorted sets."
     playground = "https://try.redis.io/"
 
-    SCHEMA_TEXT = """Key patterns:
-  student:{id}         → Hash  {name, email, major, gpa, year}
-  course:{id}          → Hash  {name, department, credits, instructor}
+    SCHEMA_TEXT = """Key patterns (all IDs are numeric):
+  student:{id}         → Hash  {name, email, major, gpa, year}       (id: 1-8)
+  course:{id}          → Hash  {name, department, credits, instructor} (id: 101-105)
   enrollment:{sid}:{cid} → Hash {score, semester}
-  student:{id}:courses → Set   {course_id, course_id, ...}
-  course:{id}:students → Set   {student_id, student_id, ...}
+  student:{id}:courses → Set   {course_id, ...}
+  course:{id}:students → Set   {student_id, ...}
   scores:{course_id}   → Sorted Set  (member=student_id, score=score)
 
-Commands: SET, GET, HSET, HGET, HGETALL, SADD, SMEMBERS, ZADD, ZRANGEBYSCORE, KEYS"""
+Course IDs: 101=Managing Big Data, 102=Predictive Analytics, 103=Digital Transformation with AI, 104=Marketing Analytics, 105=Deep Learning & NLP
+Student IDs: 1=Alice Chen, 2=Brian Kim, 3=Carla Diaz, 4=David Patel, 5=Elena Rossi, 6=Frank Okafor, 7=Grace Liu, 8=Henry Nguyen
+
+Commands: GET, HGETALL, HGET, SMEMBERS, KEYS, ZRANGEBYSCORE, ZRANGE, ZREVRANGE"""
 
     def __init__(self):
         self.store = {}
