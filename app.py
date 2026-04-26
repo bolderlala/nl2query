@@ -19,19 +19,17 @@ st.set_page_config(page_title="NL2Query — MSBA Demo", page_icon="🗄️", lay
 
 from pathlib import Path
 
-def _has_secrets():
-    return any(p.exists() for p in [
-        Path.home() / ".streamlit" / "secrets.toml",
-        Path(__file__).resolve().parent / ".streamlit" / "secrets.toml",
-    ])
+def _get_secret(key):
+    try:
+        return st.secrets[key]
+    except Exception:
+        return None
 
 
 def load_api_key():
-    if _has_secrets():
-        try:
-            return st.secrets["ANTHROPIC_API_KEY"]
-        except KeyError:
-            pass
+    val = _get_secret("ANTHROPIC_API_KEY")
+    if val:
+        return val
     if os.environ.get("ANTHROPIC_API_KEY"):
         return os.environ["ANTHROPIC_API_KEY"]
     for loc in ["anthropic_api_key.txt", os.path.join("..", "anthropic_api_key.txt")]:
@@ -42,11 +40,8 @@ def load_api_key():
 
 
 def check_password():
-    if not _has_secrets():
-        return True
-    try:
-        correct = st.secrets["CLASS_PASSWORD"]
-    except KeyError:
+    correct = _get_secret("CLASS_PASSWORD")
+    if not correct:
         return True
 
     if st.session_state.get("authenticated"):
