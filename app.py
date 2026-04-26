@@ -387,6 +387,50 @@ st.sidebar.markdown(
 
 st.title("🗄️ NL2Query")
 st.markdown("**Same data. Six databases. Live queries.**  ·  MSBA Class 8 Demo")
+
+with st.expander("📖 How to Use This Demo"):
+    st.markdown("""
+### What This App Does
+
+This app translates a **plain-English question** into executable queries for **six different database types** — and runs them live against real embedded databases loaded with the same dataset.
+
+### Steps
+
+1. **Type a question** in the text box below (or pick a sample from the dropdown)
+2. **Claude AI** translates your question into six query languages simultaneously
+3. **Click "Run"** on any tab to execute the query against a real database
+4. **Click "Run All"** at the bottom to compare results side by side
+
+### The Six Data Models
+
+| | Data Model | Query Language | Best For |
+|---|------------|---------------|----------|
+| 📊 | **Relational** (SQLite) | SQL with JOINs | Structured data, aggregations |
+| 📋 | **Wide Column** (Cassandra) | CQL — no JOINs, partition keys | High-volume, denormalized reads |
+| 📄 | **Document** (MontyDB) | MongoDB-style find() | Flexible schemas, nested data |
+| ⚡ | **Key-Value** (Redis) | GET/SET/HGETALL commands | Ultra-fast lookups by key |
+| 🕸️ | **Graph** (Kuzu) | Cypher pattern matching | Relationships, traversals |
+| 🧭 | **Vector** (ChromaDB) | Semantic similarity search | Finding by meaning, not keywords |
+
+### Sample Questions to Try
+
+- *Find all students with a GPA above 3.7*
+- *Which students scored above 90 in Predictive Analytics?*
+- *Show all courses taught by Prof. Mousavi*
+- *Find students enrolled in both Managing Big Data and Predictive Analytics*
+- *What is the average score for each course?*
+- *Who got the highest score in Deep Learning & NLP?*
+- *List all Business Analytics majors and their courses*
+- *Find students whose interests relate to machine learning*
+
+### Key Takeaway
+
+**The same question produces very different syntax depending on the data model.**
+Relational databases use JOINs. Document databases use nested JSON filters. Key-value stores use direct key lookups.
+Graph databases match relationship patterns. Vector databases search by semantic similarity.
+The data model determines the query language — and understanding this is what makes you a polyglot data professional.
+""")
+
 st.divider()
 
 # Input
