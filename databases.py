@@ -205,6 +205,8 @@ Collection: courses
         course_map = {c["id"]: c["name"] for c in COURSES}
         students_col = self.db["students"]
         courses_col = self.db["courses"]
+        students_col.delete_many({})
+        courses_col.delete_many({})
         for s in STUDENTS:
             doc = {
                 "_id": s["id"], "name": s["name"], "email": s["email"],
