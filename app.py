@@ -393,14 +393,14 @@ st.sidebar.markdown("""
 st.sidebar.divider()
 st.sidebar.markdown("### 🔗 The Real Software")
 st.sidebar.markdown("""
-| Demo | Production Software |
+| Demo (embedded) | Production Software |
 |------|-------------------|
-| SQLite | [PostgreSQL](https://www.postgresql.org/) / [MySQL](https://www.mysql.com/) |
-| Cassandra | [Apache Cassandra](https://cassandra.apache.org/) / [ScyllaDB](https://www.scylladb.com/) |
-| MontyDB | [MongoDB](https://www.mongodb.com/) |
-| Redis | [Redis](https://redis.io/) / [Valkey](https://valkey.io/) |
-| Kuzu | [Neo4j](https://neo4j.com/) / [Kuzu](https://kuzudb.com/) |
-| ChromaDB | [Pinecone](https://www.pinecone.io/) / [Weaviate](https://weaviate.io/) |
+| [SQLite](https://www.sqlite.org/) | [PostgreSQL](https://www.postgresql.org/) / [MySQL](https://www.mysql.com/) |
+| [Cassandra CQL](https://cassandra.apache.org/) | [Apache Cassandra](https://cassandra.apache.org/) / [ScyllaDB](https://www.scylladb.com/) |
+| [MontyDB](https://github.com/davidlatwe/montydb) | [MongoDB](https://www.mongodb.com/) |
+| [Redis](https://redis.io/) | [Redis](https://redis.io/) / [Valkey](https://valkey.io/) |
+| [Kuzu](https://kuzudb.com/) | [Neo4j](https://neo4j.com/) / [Kuzu](https://kuzudb.com/) |
+| [ChromaDB](https://www.trychroma.com/) | [Pinecone](https://www.pinecone.io/) / [Weaviate](https://weaviate.io/) |
 """)
 st.sidebar.divider()
 st.sidebar.markdown("### 💡 Teaching Point")
