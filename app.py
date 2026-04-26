@@ -423,6 +423,14 @@ This app translates a **plain-English question** into executable queries for **s
 - *List all Business Analytics majors and their courses*
 - *Find students whose interests relate to machine learning*
 
+### Exploring the Schemas
+
+Click **"View the dataset & schemas for all 6 databases"** below the question box to see:
+- **The Data** tab — the raw dataset (8 students, 5 courses, 22 enrollments)
+- **Each database tab** — how that data model stores the same data, with visual schema diagrams and example queries
+
+When you run a query, each result tab also has a **schema expander** showing the relevant schema for that database.
+
 ### Key Takeaway
 
 **The same question produces very different syntax depending on the data model.**
