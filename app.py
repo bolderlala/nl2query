@@ -425,7 +425,7 @@ def generate_teaching_notes(client, question, queries, all_results):
         summaries.append(f"[{key}] Query: {query}\nStatus: {status}\nResults: {result_str}")
 
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-opus-4-7",
         max_tokens=1024,
         system=TEACHING_NOTE_PROMPT,
         messages=[{
