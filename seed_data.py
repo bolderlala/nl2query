@@ -53,4 +53,19 @@ SAMPLE_QUESTIONS = [
     "Who got the highest score in Deep Learning & NLP?",
     "List all Business Analytics majors and their courses",
     "Find students whose interests relate to machine learning",
+    "Find all students who share at least one course with Alice Chen",
+    "Look up the profile of student ID 1",
 ]
+
+QUERY_STRENGTH = {
+    "Find all students with a GPA above 3.7": ("sql", "Simple WHERE filter — SQL's bread and butter"),
+    "Which students scored above 90 in Predictive Analytics?": ("sql", "JOIN + WHERE — relational excels at combining tables"),
+    "Show all courses taught by Prof. Mousavi": ("column", "Partition-key lookup on courses_by_department"),
+    "Find students enrolled in both Managing Big Data and Predictive Analytics": ("graph", "Pattern matching across two relationship edges"),
+    "What is the average score for each course?": ("sql", "GROUP BY + aggregation is SQL's core strength"),
+    "Who got the highest score in Deep Learning & NLP?": ("sql", "ORDER BY + LIMIT — classic relational query"),
+    "List all Business Analytics majors and their courses": ("document", "Nested enrollments array lives inside student doc"),
+    "Find students whose interests relate to machine learning": ("vector", "Semantic similarity search on student bios"),
+    "Find all students who share at least one course with Alice Chen": ("graph", "2-hop traversal — natural in graph, clunky self-join in SQL"),
+    "Look up the profile of student ID 1": ("kv", "Direct key lookup — KV's fastest operation"),
+}

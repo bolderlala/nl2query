@@ -11,7 +11,7 @@ import anthropic
 import json
 import os
 from databases import init_all, SQLDatabase, ColumnFamilyDatabase, DocumentDatabase, KeyValueDatabase, GraphDatabase, VectorDatabase
-from seed_data import SAMPLE_QUESTIONS, STUDENTS, COURSES, ENROLLMENTS
+from seed_data import SAMPLE_QUESTIONS, QUERY_STRENGTH, STUDENTS, COURSES, ENROLLMENTS
 
 st.set_page_config(page_title="NL2Query — MSBA Demo", page_icon="🗄️", layout="wide")
 
@@ -405,14 +405,21 @@ def _render_schema(key, db):
         st.code(db.get_schema(), language="text")
 
 
-TEACHING_NOTE_PROMPT = """You are a teaching assistant for a graduate analytics course comparing 6 database paradigms.
+TEACHING_NOTE_PROMPT = """You are a professor's teaching assistant for a graduate analytics course comparing 6 database paradigms.
 
-Given a question, the generated query for a specific database, and its results, write a 1-2 sentence teaching note explaining:
-- How THIS database handled THIS specific query (refer to the actual query pattern used)
-- What strength or limitation of this database paradigm the query demonstrates
-- If the results differ from the SQL ground truth, explain WHY this database gives different results
+Given a question, the generated query for a specific database, and its results, write a teaching note for each database that includes:
 
-Be specific to the actual question and results — never use generic examples like GPA > 3.7 if the question is about something else. Use **bold** for the database paradigm name. Keep it under 50 words."""
+1. **What happened**: How this database handled the specific query — what query pattern was used and what it returned (or why it failed/returned different results than SQL).
+2. **Why**: The fundamental design reason — what strength or limitation of this paradigm caused this behavior. Be specific (e.g., "no secondary indexes" not just "limitation").
+3. **In production**: How you would solve this in a real-world production system if the demo approach is limited. Give concrete alternatives:
+   - For Wide Column: mention ALLOW FILTERING (and why it's bad at scale), SASI indexes, or external search (Elasticsearch/Solr)
+   - For Document: mention aggregation pipeline ($unwind/$sort) if MontyDB can't do it, or application-side processing
+   - For Key-Value: mention scanning all keys + client-side filtering, or secondary index structures (Redis Search module, sorted sets as manual indexes)
+   - For Graph: mention when graph traversal is overkill vs. when it shines
+   - For Vector: mention that semantic search is approximate by design, and when to combine with metadata filters
+   - For SQL: mention why relational handles this well (or doesn't)
+
+Use **bold** for the database paradigm name. Be specific to THIS question and results — never use generic examples unrelated to the actual query. Use markdown formatting. Keep each note to 2-4 sentences (around 60-100 words)."""
 
 
 def generate_teaching_notes(client, question, queries, all_results):
@@ -426,7 +433,7 @@ def generate_teaching_notes(client, question, queries, all_results):
 
     response = client.messages.create(
         model="claude-opus-4-7",
-        max_tokens=1024,
+        max_tokens=2048,
         system=TEACHING_NOTE_PROMPT,
         messages=[{
             "role": "user",
@@ -434,21 +441,32 @@ def generate_teaching_notes(client, question, queries, all_results):
                 f"Question: {question}\n\n"
                 f"SQL ground truth query: {queries.get('sql', '')}\n\n"
                 + "\n\n".join(summaries)
-                + "\n\nOutput exactly 6 lines, one per database in this order: sql, column, document, kv, graph, vector. "
-                "Each line starts with the key in brackets like [sql], [column], etc. followed by the teaching note."
+                + "\n\nOutput exactly 6 entries, one per database in this order: sql, column, document, graph, kv, vector. "
+                "Each entry starts with the key in brackets like [sql], [column], etc. on its own line, followed by the teaching note. "
+                "The teaching note can span multiple lines. End each entry with a blank line before the next [key]."
             ),
         }],
     )
     notes = {}
+    current_key = None
+    current_lines = []
     for line in response.content[0].text.strip().split("\n"):
-        line = line.strip()
-        if not line:
-            continue
+        matched_key = None
         for key in DB_ORDER:
             tag = f"[{key}]"
-            if line.startswith(tag):
-                notes[key] = line[len(tag):].strip()
+            if line.strip().startswith(tag):
+                matched_key = key
+                line_rest = line.strip()[len(tag):].strip()
                 break
+        if matched_key:
+            if current_key and current_lines:
+                notes[current_key] = " ".join(current_lines).strip()
+            current_key = matched_key
+            current_lines = [line_rest] if line_rest else []
+        elif current_key:
+            current_lines.append(line.strip())
+    if current_key and current_lines:
+        notes[current_key] = " ".join(current_lines).strip()
     return notes
 
 NO_RESULTS_HINTS = {
@@ -562,15 +580,31 @@ The data model determines the query language — and understanding this is what 
 st.divider()
 
 # Input
+_STRENGTH_ICONS = {k: DB_CLASSES[k].icon for k in DB_ORDER}
+
+def _format_sample(q):
+    if not q:
+        return ""
+    strength = QUERY_STRENGTH.get(q)
+    if strength:
+        return f"{_STRENGTH_ICONS[strength[0]]} {q}"
+    return q
+
 col_q, col_s = st.columns([3, 1])
 with col_q:
     user_q = st.text_input("Ask a question about the student data:",
                            placeholder="e.g., Find all students with a GPA above 3.7")
 with col_s:
     st.markdown("**Try a sample:**")
-    sample = st.selectbox("Samples", [""] + SAMPLE_QUESTIONS, label_visibility="collapsed")
+    sample = st.selectbox("Samples", [""] + SAMPLE_QUESTIONS, label_visibility="collapsed",
+                          format_func=_format_sample)
 
 question = user_q or sample
+
+if sample and sample in QUERY_STRENGTH:
+    db_key, reason = QUERY_STRENGTH[sample]
+    cls = DB_CLASSES[db_key]
+    st.caption(f"{cls.icon} **Best for {cls.name}** — {reason}")
 
 # Data & schema viewer
 with st.expander("📋 View the dataset & schemas for all 6 databases"):
