@@ -552,14 +552,20 @@ This app translates a **plain-English question** into executable queries for **s
 
 ### Sample Questions to Try
 
-- *Find all students with a GPA above 3.7*
-- *Which students scored above 90 in Predictive Analytics?*
-- *Show all courses taught by Prof. Mousavi*
-- *Find students enrolled in both Managing Big Data and Predictive Analytics*
-- *What is the average score for each course?*
-- *Who got the highest score in Deep Learning & NLP?*
-- *List all Business Analytics majors and their courses*
-- *Find students whose interests relate to machine learning*
+Each question highlights a different database's strength — the icon shows which data model handles it best.
+
+| Question | Best DB | Why |
+|----------|---------|-----|
+| Find all students with a GPA above 3.7 | 📊 SQL | Simple WHERE filter |
+| Which students scored above 90 in Predictive Analytics? | 📊 SQL | JOIN + WHERE across tables |
+| Show all courses taught by Prof. Mousavi | 📋 Wide Column | Partition-key lookup |
+| Find students enrolled in both … and … | 🕸️ Graph | Pattern matching across edges |
+| What is the average score for each course? | 📊 SQL | GROUP BY + aggregation |
+| Who got the highest score in Deep Learning & NLP? | 📊 SQL | ORDER BY + LIMIT |
+| List all Business Analytics majors and their courses | 📄 Document | Nested enrollments array |
+| Find students whose interests relate to machine learning | 🧭 Vector | Semantic similarity on bios |
+| Find all students who share a course with Alice Chen | 🕸️ Graph | 2-hop traversal |
+| Look up the profile of student ID 1 | ⚡ Key-Value | Direct key lookup |
 
 ### Exploring the Schemas
 
@@ -568,6 +574,19 @@ Click **"View the dataset & schemas for all 6 databases"** below the question bo
 - **Each database tab** — how that data model stores the same data, with visual schema diagrams and example queries
 
 When you run a query, each result tab also has a **schema expander** showing the relevant schema for that database.
+
+### Teaching Notes
+
+After you run a query, each database tab shows a **💡 teaching note** that explains:
+- **What happened** — how this database handled the query and what pattern it used
+- **Why** — the design reason behind the behavior (e.g., "no secondary indexes" or "partition-key lookup")
+- **In production** — how real-world systems solve the same problem when the demo approach hits a limitation
+
+**How to use them for learning:**
+1. **Run the same question across all 6 tabs** and read the teaching notes side by side — notice where each database shines vs. struggles
+2. **Start with a question that favors one DB** (check the icon in the sample dropdown), then ask yourself: *why is this hard for the others?*
+3. **Pay attention to "In production" hints** — they bridge the gap between this demo and real-world systems (e.g., Redis Search module, MongoDB aggregation pipelines, Cassandra secondary indexes)
+4. **Try "Run All"** at the bottom to compare all 6 results and notes in a single view — great for spotting trade-offs at a glance
 
 ### Key Takeaway
 
