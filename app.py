@@ -685,11 +685,20 @@ else:
                 if results:
                     st.markdown(f"**Results** ({len(results)} rows):")
                     if key == "kv":
-                        for r in results:
-                            st.caption(f"`{r['command']}`")
-                            _show_kv_result(r["result"])
+                        for i, r in enumerate(results):
+                            if i == 0:
+                                st.caption(f"`{r['command']}`")
+                                _show_kv_result(r["result"])
+                            else:
+                                with st.expander(f"`{r['command']}`", expanded=False):
+                                    _show_kv_result(r["result"])
                     elif key == "document":
-                        st.json(results)
+                        if len(results) == 1:
+                            st.json(results)
+                        else:
+                            st.json(results[:1])
+                            with st.expander(f"Show {len(results) - 1} more results", expanded=False):
+                                st.json(results[1:])
                     else:
                         st.dataframe(results, use_container_width=True, hide_index=True)
                 else:
@@ -723,16 +732,30 @@ else:
                 query = queries[key]
                 with col:
                     st.markdown(f"**{db.icon} {db.name}**")
+                    with st.expander(f"📋 Schema", expanded=False):
+                        _render_schema(key, db)
                     st.code(query, language=db.lang)
                     try:
                         results = db.run_query(query)
                         if results:
                             if key == "kv":
-                                for r in results:
-                                    st.caption(f"`{r['command']}`")
-                                    _show_kv_result(r["result"])
+                                for i, r in enumerate(results):
+                                    if i == 0:
+                                        st.caption(f"`{r['command']}`")
+                                        _show_kv_result(r["result"])
+                                    elif i == 1:
+                                        with st.expander(f"{len(results) - 1} more commands", expanded=False):
+                                            for r2 in results[1:]:
+                                                st.caption(f"`{r2['command']}`")
+                                                _show_kv_result(r2["result"])
+                                        break
                             elif key == "document":
-                                st.json(results)
+                                if len(results) == 1:
+                                    st.json(results)
+                                else:
+                                    st.json(results[:1])
+                                    with st.expander(f"{len(results) - 1} more results", expanded=False):
+                                        st.json(results[1:])
                             else:
                                 st.dataframe(results, use_container_width=True, hide_index=True, height=250)
                         else:
