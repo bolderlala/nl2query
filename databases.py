@@ -583,12 +583,12 @@ def _exec_single_cql(tables, query_str):
     q = " ".join(query_str.strip().rstrip(";").split())
     q = re.sub(r"\s+ALLOW\s+FILTERING\s*$", "", q, flags=re.IGNORECASE)
 
-    m = re.match(r"SELECT\s+(.+?)\s+FROM\s+(\w+)(?:\s+WHERE\s+(.+?))?(?:\s+GROUP\s+BY\s+(.+?))?(?:\s+ORDER\s+BY\s+(.+?))?(?:\s+LIMIT\s+(\d+))?$", q, re.IGNORECASE)
+    m = re.match(r"SELECT\s+(.+?)\s+FROM\s+([\w.]+)(?:\s+WHERE\s+(.+?))?(?:\s+GROUP\s+BY\s+(.+?))?(?:\s+ORDER\s+BY\s+(.+?))?(?:\s+LIMIT\s+(\d+))?$", q, re.IGNORECASE)
     if not m:
         return [{"error": "Could not parse CQL. Expected: SELECT ... FROM table [WHERE ...] [GROUP BY ...] [ORDER BY ...] [LIMIT n]"}]
 
     select_clause, table_name, where_clause, group_clause, order_clause, limit_str = m.groups()
-    table_name = table_name.lower()
+    table_name = table_name.split(".")[-1].lower()
     if table_name not in tables:
         return [{"error": f"Table '{table_name}' not found. Available: {', '.join(tables.keys())}"}]
 
