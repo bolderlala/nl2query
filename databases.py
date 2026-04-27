@@ -625,6 +625,20 @@ def _exec_single_cql(tables, query_str):
                 rows = [r for r in rows if matches_in(r)]
                 continue
 
+            like_m = re.match(r"(\w+)\s+LIKE\s+'(.+?)'", cond, re.IGNORECASE)
+            if like_m:
+                col = like_m.group(1)
+                pattern = like_m.group(2).replace("%", "")
+
+                def matches_like(row, col=col, pattern=pattern):
+                    rv = row.get(col)
+                    if rv is None:
+                        return False
+                    return pattern.lower() in str(rv).lower()
+
+                rows = [r for r in rows if matches_like(r)]
+                continue
+
             cm = re.match(r"(\w+)\s*(=|!=|>=|<=|>|<)\s*(.+)", cond)
             if not cm:
                 return [{"error": f"Cannot parse condition: {cond}"}]
