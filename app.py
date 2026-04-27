@@ -71,21 +71,89 @@ DB_CLASSES = {
 
 # ── System prompt ────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """You are a database query translator for a graduate analytics course.
-You translate natural language into executable queries for a specific database engine.
+SQL_SYSTEM_PROMPT = """You are a database query translator for a graduate analytics course.
+You translate natural language into an executable SQL query for SQLite.
+
+CRITICAL RULES:
+1. Output ONLY the executable SQL query. No explanation, no markdown fences, no backticks, no commentary.
+2. Use ONLY the exact table/column names from the schema provided.
+3. The query must be directly executable — do not invent fields.
+4. Use the dataset provided to understand what values exist (e.g., student names, course names, bios, majors).
+5. For questions about topics, interests, or expertise (e.g., "machine learning"), search the bio column using LIKE, not the major column.
+6. Tables: students, courses, enrollments. Use JOINs when needed."""
+
+TRANSLATE_SYSTEM_PROMPT = """You are a database query translator for a graduate analytics course.
+You are given:
+- A natural language question
+- The correct SQL query that answers it (already validated)
+- The SQL results (ground truth — your query MUST return the same logical answer)
+- The target database's schema
+
+Your job: translate the SQL query into the target database's query language so it returns the SAME data.
 
 CRITICAL RULES:
 1. Output ONLY the executable query. No explanation, no markdown fences, no backticks, no commentary.
-2. Use ONLY the exact table/column/field names from the schema provided.
-3. The query must be directly executable against the schema — do not invent fields.
+2. Use ONLY the exact field/key/property names from the target schema.
+3. The query must return the same students/courses/data as the SQL results.
+4. If the SQL used LIKE on the bio column to find students by interest/expertise, replicate that filter in the target database (e.g., $regex in MongoDB, CONTAINS in Cypher, semantic search in Vector DB).
+5. Use the SQL results to identify the exact IDs, names, and values you need — use them directly when the target database requires explicit lookups (e.g., Redis key lookups).
 
 Database-specific syntax rules:
-- Relational Database (SQLite): Standard SQL. Tables: students, courses, enrollments. Use JOINs when needed.
-- Wide Column Store (Cassandra): CQL syntax (SQL-like but NO JOINs). Tables: students (PK: student_id), courses_by_department (PK: department), enrollments_by_student (PK: student_id), enrollments_by_course (PK: course_id). Each table is denormalized — pick the right table for the query. WHERE must filter on partition key. Use SELECT ... FROM table WHERE partition_key = value. Supports AND, IN, ORDER BY, LIMIT. IMPORTANT: Only filter on columns that exist in the target table. Each table has different columns — check the schema. If a query needs data from multiple tables, write separate SELECT statements (one per table). Majors are 'Business Analytics' and 'Data Science'. Departments are 'MSBA' and 'Darden'. If a question asks about topics or interests, search by the closest matching major, not by the topic name itself.
+- Wide Column Store (Cassandra): CQL syntax (SQL-like but NO JOINs). Tables: students (PK: student_id), courses_by_department (PK: department), enrollments_by_student (PK: student_id), enrollments_by_course (PK: course_id). Each table is denormalized — pick the right table for the query. WHERE must filter on partition key. Use SELECT ... FROM table WHERE partition_key = value. Supports AND, IN, ORDER BY, LIMIT. IMPORTANT: Only filter on columns that exist in the target table. Each table has different columns — check the schema. If a query needs data from multiple tables, write separate SELECT statements (one per table). Majors are 'Business Analytics' and 'Data Science'. Departments are 'MSBA' and 'Darden'.
 - Document Database (MontyDB): Output a Python expression starting with db["collection"].find({filter}). Use MongoDB operators ($gt, $gte, $lt, $lte, $eq, $ne, $in, $regex, $and, $or, $elemMatch). For sorting add .sort("field", 1 or -1). IMPORTANT: MontyDB does NOT support aggregate(), projection operators ($), or dot-notation in sort paths. Only use find() with a filter dict and optional .sort("top_level_field", direction). For queries about nested enrollment data, use $elemMatch to filter and return the full student documents. When filtering the same field multiple times (e.g., two $elemMatch on "enrollments"), you MUST use $and: [{"enrollments": {"$elemMatch": ...}}, {"enrollments": {"$elemMatch": ...}}]. Never repeat the same key in a Python dict literal.
-- Key-Value Store (Redis): Output one Redis command per line. Available commands: GET, HGETALL, HGET, SMEMBERS, KEYS, ZRANGEBYSCORE, ZRANGE, ZREVRANGE. Keys follow patterns: student:{id}, course:{id}, enrollment:{sid}:{cid}, student:{id}:courses, course:{id}:students, scores:{course_id}. IMPORTANT: KEYS only returns key names, not data. To show actual data, use HGETALL for each relevant key. For questions about all students, output HGETALL student:1 through HGETALL student:8 (one per line). For questions about specific courses or scores, use the appropriate key with HGETALL or ZRANGEBYSCORE. Always return the data, not just key names.
-- Graph Database (Kuzu): MATCH/WHERE/RETURN Cypher syntax. Node labels: Student, Course. Relationship: ENROLLED_IN. Properties on nodes use exact field names from schema. Always end with semicolon.
-- Vector Database (ChromaDB): Output a Python expression: client.get_collection("collection_name").query(...). Collections: student_profiles (has student bios), course_catalog (has course descriptions). Use query_texts for semantic search, n_results for limit. IMPORTANT: Vector search finds by meaning, not exact values. Always rely on query_texts for the main search. Only add a where filter for simple exact metadata matches (e.g., major or department). Never filter on scores, GPA ranges, or numeric comparisons in where — those don't work well with vector search. When in doubt, omit the where clause and let semantic search do the work."""
+- Key-Value Store (Redis): Output one Redis command per line. Available commands: GET, HGETALL, HGET, SMEMBERS, KEYS, ZRANGEBYSCORE, ZRANGE, ZREVRANGE. Keys follow patterns: student:{id}, course:{id}, enrollment:{sid}:{cid}, student:{id}:courses, course:{id}:students, scores:{course_id}. IMPORTANT: Use the exact IDs from the SQL results to construct keys. For example, if SQL found student_id 1 and 5, output HGETALL student:1 and HGETALL student:5. Always return the data, not just key names.
+- Graph Database (Kuzu): MATCH/WHERE/RETURN Cypher syntax. Node labels: Student, Course. Relationship: ENROLLED_IN. Properties on nodes use exact field names from schema. Use CONTAINS for text search on bio fields. Always end with semicolon.
+- Vector Database (ChromaDB): Output a Python expression: client.get_collection("collection_name").query(...). Collections: student_profiles (has student bios), course_catalog (has course descriptions). Use query_texts for semantic search, n_results for limit. IMPORTANT: Vector search finds by meaning, not exact values. Always rely on query_texts for the main search. Only add a where filter for simple exact metadata matches (e.g., major or department). Never filter on scores, GPA ranges, or numeric comparisons in where — those don't work well with vector search. Set n_results high enough to capture all relevant matches from the SQL results."""
+
+
+def _build_dataset_summary():
+    lines = ["Students (id, name, major, gpa, year, bio):"]
+    for s in STUDENTS:
+        lines.append(f"  {s['id']}: {s['name']}, {s['major']}, GPA {s['gpa']}, Year {s['year']}, Bio: \"{s['bio']}\"")
+    lines.append("\nCourses (id, name, department, credits, instructor, description):")
+    for c in COURSES:
+        lines.append(f"  {c['id']}: {c['name']}, {c['department']}, {c['credits']}cr, {c['instructor']}, Desc: \"{c['description']}\"")
+    lines.append("\nEnrollments (student_id, course_id, score, semester):")
+    for e in ENROLLMENTS:
+        lines.append(f"  Student {e['student_id']} → Course {e['course_id']}, Score {e['score']}, {e['semester']}")
+    return "\n".join(lines)
+
+
+DATASET_SUMMARY = _build_dataset_summary()
+
+
+def translate_sql(client, question, sql_db):
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=512,
+        system=SQL_SYSTEM_PROMPT,
+        messages=[{
+            "role": "user",
+            "content": f"Schema:\n{sql_db.get_schema()}\n\nDataset:\n{DATASET_SUMMARY}\n\nQuestion: {question}\n\nSQL Query:",
+        }],
+    )
+    return response.content[0].text.strip()
+
+
+def translate_other(client, question, sql_query, sql_results, target_db):
+    sql_results_str = json.dumps(sql_results[:20], indent=2, default=str) if sql_results else "(no results)"
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=512,
+        system=TRANSLATE_SYSTEM_PROMPT,
+        messages=[{
+            "role": "user",
+            "content": (
+                f"Question: {question}\n\n"
+                f"SQL Query (correct answer):\n{sql_query}\n\n"
+                f"SQL Results (ground truth):\n{sql_results_str}\n\n"
+                f"Target database: {target_db.name}\n\n"
+                f"Target schema:\n{target_db.get_schema()}\n\n"
+                f"Query:"
+            ),
+        }],
+    )
+    return response.content[0].text.strip()
 
 
 def _show_kv_result(result):
@@ -356,18 +424,6 @@ NO_RESULTS_HINTS = {
 }
 
 
-def translate(client, question, db):
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=512,
-        system=SYSTEM_PROMPT,
-        messages=[{
-            "role": "user",
-            "content": f"Database type: {db.name}\n\nSchema:\n{db.get_schema()}\n\nQuestion: {question}\n\nQuery:",
-        }],
-    )
-    return response.content[0].text.strip()
-
 
 # ── Password gate ───────────────────────────────────────────────────────────
 
@@ -529,11 +585,24 @@ else:
     if cache_key not in st.session_state:
         queries = {}
         bar = st.progress(0, text="Translating...")
-        for i, key in enumerate(DB_ORDER):
+
+        bar.progress(1 / len(DB_ORDER), text="Translating → SQL (ground truth)...")
+        try:
+            queries["sql"] = translate_sql(client, question, dbs["sql"])
+        except Exception as e:
+            queries["sql"] = f"# Error: {e}"
+
+        sql_results = []
+        try:
+            sql_results = dbs["sql"].run_query(queries["sql"])
+        except Exception:
+            pass
+
+        for i, key in enumerate(DB_ORDER[1:], start=2):
             db = dbs[key]
-            bar.progress((i + 1) / len(DB_ORDER), text=f"Translating → {db.name}...")
+            bar.progress(i / len(DB_ORDER), text=f"Translating → {db.name}...")
             try:
-                queries[key] = translate(client, question, db)
+                queries[key] = translate_other(client, question, queries["sql"], sql_results, db)
             except Exception as e:
                 queries[key] = f"# Error: {e}"
         bar.empty()
