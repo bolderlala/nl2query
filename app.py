@@ -124,7 +124,7 @@ DATASET_SUMMARY = _build_dataset_summary()
 
 def translate_sql(client, question, sql_db):
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-opus-4-7",
         max_tokens=512,
         system=SQL_SYSTEM_PROMPT,
         messages=[{
