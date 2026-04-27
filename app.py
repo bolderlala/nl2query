@@ -63,7 +63,7 @@ def check_password():
 def get_databases():
     return init_all()
 
-DB_ORDER = ["sql", "column", "document", "kv", "graph", "vector"]
+DB_ORDER = ["sql", "column", "document", "graph", "kv", "vector"]
 DB_CLASSES = {
     "sql": SQLDatabase, "column": ColumnFamilyDatabase, "document": DocumentDatabase,
     "kv": KeyValueDatabase, "graph": GraphDatabase, "vector": VectorDatabase,
@@ -405,14 +405,51 @@ def _render_schema(key, db):
         st.code(db.get_schema(), language="text")
 
 
-DB_TEACHING_NOTES = {
-    "sql": "**Relational databases** excel at filtering on any column (`WHERE gpa > 3.7`), joining tables, and aggregations. This flexibility comes from the structured schema and query optimizer.",
-    "column": "**Wide column stores** can only efficiently filter on the **partition key**. Other filters require scanning all partitions (ALLOW FILTERING), which is slow at scale. That's why we denormalize data into multiple tables — each designed for one query pattern.",
-    "document": "**Document databases** can filter on any field, including nested arrays. But without JOINs, related data must be embedded (nested) inside documents or looked up separately.",
-    "kv": "**Key-value stores** only support lookups by **exact key** — there's no way to say \"find all students where GPA > 3.7\". To answer that, you must fetch every student and filter client-side. This is the trade-off for ultra-fast O(1) key lookups.",
-    "graph": "**Graph databases** excel at traversing relationships (\"students enrolled in the same courses\") but are not optimized for bulk attribute filtering like \"GPA > 3.7\" across all nodes.",
-    "vector": "**Vector databases** search by **semantic similarity**, not exact values. A query like \"GPA above 3.7\" gets matched to student bios about academic achievement — the results may *relate* to the topic but won't give exact numeric filtering. Use relational or document databases for precise attribute queries.",
-}
+TEACHING_NOTE_PROMPT = """You are a teaching assistant for a graduate analytics course comparing 6 database paradigms.
+
+Given a question, the generated query for a specific database, and its results, write a 1-2 sentence teaching note explaining:
+- How THIS database handled THIS specific query (refer to the actual query pattern used)
+- What strength or limitation of this database paradigm the query demonstrates
+- If the results differ from the SQL ground truth, explain WHY this database gives different results
+
+Be specific to the actual question and results — never use generic examples like GPA > 3.7 if the question is about something else. Use **bold** for the database paradigm name. Keep it under 50 words."""
+
+
+def generate_teaching_notes(client, question, queries, all_results):
+    summaries = []
+    for key in DB_ORDER:
+        query = queries.get(key, "")
+        results = all_results.get(key, {})
+        result_str = results.get("summary", "not run yet")
+        status = results.get("status", "pending")
+        summaries.append(f"[{key}] Query: {query}\nStatus: {status}\nResults: {result_str}")
+
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        system=TEACHING_NOTE_PROMPT,
+        messages=[{
+            "role": "user",
+            "content": (
+                f"Question: {question}\n\n"
+                f"SQL ground truth query: {queries.get('sql', '')}\n\n"
+                + "\n\n".join(summaries)
+                + "\n\nOutput exactly 6 lines, one per database in this order: sql, column, document, kv, graph, vector. "
+                "Each line starts with the key in brackets like [sql], [column], etc. followed by the teaching note."
+            ),
+        }],
+    )
+    notes = {}
+    for line in response.content[0].text.strip().split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        for key in DB_ORDER:
+            tag = f"[{key}]"
+            if line.startswith(tag):
+                notes[key] = line[len(tag):].strip()
+                break
+    return notes
 
 NO_RESULTS_HINTS = {
     "sql": "Check that table/column names match the schema exactly (students, courses, enrollments). String values need single quotes (e.g., WHERE name = 'Alice Chen').",
@@ -441,8 +478,8 @@ st.sidebar.markdown("""
 | 📊 **Relational** (SQLite) | Structured data, joins, aggregations |
 | 📋 **Wide Column** (Cassandra) | Denormalized, partition-key queries |
 | 📄 **Document** (MontyDB) | Flexible schemas, nested data |
-| ⚡ **Key-Value** (Redis) | Fast lookups by key |
 | 🕸️ **Graph** (Kuzu) | Relationships, traversals |
+| ⚡ **Key-Value** (Redis) | Fast lookups by key |
 | 🧭 **Vector** (ChromaDB) | Semantic similarity search |
 """)
 
@@ -454,8 +491,8 @@ st.sidebar.markdown("""
 | [SQLite](https://www.sqlite.org/) | [PostgreSQL](https://www.postgresql.org/) / [MySQL](https://www.mysql.com/) |
 | [Cassandra CQL](https://cassandra.apache.org/) | [Apache Cassandra](https://cassandra.apache.org/) / [ScyllaDB](https://www.scylladb.com/) |
 | [MontyDB](https://github.com/davidlatwe/montydb) | [MongoDB](https://www.mongodb.com/) |
+| [Kuzu](https://github.com/kuzudb/kuzu) | [Neo4j](https://neo4j.com/) / [Kuzu](https://github.com/kuzudb/kuzu) |
 | [Redis](https://redis.io/) | [Redis](https://redis.io/) / [Valkey](https://valkey.io/) |
-| [Kuzu](https://kuzudb.com/) | [Neo4j](https://neo4j.com/) / [Kuzu](https://kuzudb.com/) |
 | [ChromaDB](https://www.trychroma.com/) | [Pinecone](https://www.pinecone.io/) / [Weaviate](https://weaviate.io/) |
 """)
 st.sidebar.divider()
@@ -491,8 +528,8 @@ This app translates a **plain-English question** into executable queries for **s
 | 📊 | **Relational** (SQLite) | SQL with JOINs | Structured data, aggregations |
 | 📋 | **Wide Column** (Cassandra) | CQL — no JOINs, partition keys | High-volume, denormalized reads |
 | 📄 | **Document** (MontyDB) | MongoDB-style find() | Flexible schemas, nested data |
-| ⚡ | **Key-Value** (Redis) | GET/SET/HGETALL commands | Ultra-fast lookups by key |
 | 🕸️ | **Graph** (Kuzu) | Cypher pattern matching | Relationships, traversals |
+| ⚡ | **Key-Value** (Redis) | GET/SET/HGETALL commands | Ultra-fast lookups by key |
 | 🧭 | **Vector** (ChromaDB) | Semantic similarity search | Finding by meaning, not keywords |
 
 ### Sample Questions to Try
@@ -564,8 +601,8 @@ st.divider()
 
 if not question:
     st.markdown("### 👋 Type a question above to see it translated into 6 query languages and executed live.")
-    for row_keys in [DB_ORDER[:3], DB_ORDER[3:]]:
-        cols = st.columns(3)
+    for row_keys in [DB_ORDER[:2], DB_ORDER[2:4], DB_ORDER[4:]]:
+        cols = st.columns(2)
         for col, key in zip(cols, row_keys):
             cls = DB_CLASSES[key]
             with col:
@@ -582,11 +619,12 @@ else:
     st.markdown(f'### 🔍 *"{question}"*')
 
     cache_key = f"q_{question}"
+    notes_key = f"notes_{question}"
     if cache_key not in st.session_state:
         queries = {}
         bar = st.progress(0, text="Translating...")
 
-        bar.progress(1 / len(DB_ORDER), text="Translating → SQL (ground truth)...")
+        bar.progress(1 / 8, text="Translating → SQL (ground truth)...")
         try:
             queries["sql"] = translate_sql(client, question, dbs["sql"])
         except Exception as e:
@@ -600,20 +638,47 @@ else:
 
         for i, key in enumerate(DB_ORDER[1:], start=2):
             db = dbs[key]
-            bar.progress(i / len(DB_ORDER), text=f"Translating → {db.name}...")
+            bar.progress(i / 8, text=f"Translating → {db.name}...")
             try:
                 queries[key] = translate_other(client, question, queries["sql"], sql_results, db)
             except Exception as e:
                 queries[key] = f"# Error: {e}"
+
+        bar.progress(7 / 8, text="Running queries & generating teaching notes...")
+        all_results = {}
+        for key in DB_ORDER:
+            db = dbs[key]
+            try:
+                results = db.run_query(queries[key])
+                if results:
+                    if key == "kv":
+                        summary = "; ".join(f"{r['command']} → {json.dumps(r['result'], default=str)[:80]}" for r in results[:5])
+                    elif key == "document":
+                        summary = json.dumps(results[:3], default=str)[:300]
+                    else:
+                        summary = json.dumps(results[:5], default=str)[:300]
+                    all_results[key] = {"status": f"{len(results)} rows", "summary": summary}
+                else:
+                    all_results[key] = {"status": "no results", "summary": "empty"}
+            except Exception as e:
+                all_results[key] = {"status": "error", "summary": str(e)[:100]}
+
+        try:
+            teaching_notes = generate_teaching_notes(client, question, queries, all_results)
+        except Exception:
+            teaching_notes = {}
+
         bar.empty()
         st.session_state[cache_key] = queries
+        st.session_state[notes_key] = teaching_notes
 
     queries = st.session_state[cache_key]
+    teaching_notes = st.session_state.get(notes_key, {})
 
     tabs = st.tabs([f"{DB_CLASSES[k].icon} {DB_CLASSES[k].name}" for k in DB_ORDER])
 
     @st.fragment
-    def _run_query_tab(key, db, query):
+    def _run_query_tab(key, db, query, note):
         if st.button(f"▶ Run", key=f"run_{key}"):
             try:
                 results = db.run_query(query)
@@ -633,24 +698,26 @@ else:
             except Exception as e:
                 st.error(f"Execution error: {e}")
                 st.caption(f"💡 **Hint:** {NO_RESULTS_HINTS.get(key, '')}")
-            st.info(f"💡 {DB_TEACHING_NOTES.get(key, '')}")
+            if note:
+                st.info(f"💡 {note}")
 
     for tab, key in zip(tabs, DB_ORDER):
         db = dbs[key]
         query = queries[key]
+        note = teaching_notes.get(key, "")
         with tab:
             with st.expander(f"📋 {db.name} Schema"):
                 st.caption(db.description)
                 _render_schema(key, db)
             st.markdown(f"**Generated Query:**")
             st.code(query, language=db.lang)
-            _run_query_tab(key, db, query)
+            _run_query_tab(key, db, query, note)
 
     # Run All button
     st.divider()
     if st.button("▶ Run All — Compare Results Side by Side", type="primary"):
-        for row_keys in [DB_ORDER[:3], DB_ORDER[3:]]:
-            cols = st.columns(3)
+        for row_keys in [DB_ORDER[:2], DB_ORDER[2:4], DB_ORDER[4:]]:
+            cols = st.columns(2)
             for col, key in zip(cols, row_keys):
                 db = dbs[key]
                 query = queries[key]
@@ -674,7 +741,9 @@ else:
                     except Exception as e:
                         st.error(str(e)[:100])
                         st.caption(f"💡 {NO_RESULTS_HINTS.get(key, '')}")
-                    st.caption(f"💡 {DB_TEACHING_NOTES.get(key, '')}")
+                    note = teaching_notes.get(key, "")
+                    if note:
+                        st.caption(f"💡 {note}")
             st.divider()
 
     st.divider()

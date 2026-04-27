@@ -118,6 +118,30 @@ self.db["students"].insert_one(doc)
 db["students"].find({"gpa": {"$gte": 3.7}})
 ```
 
+### Graph Database (Kuzu)
+
+| | |
+|---|---|
+| **Data Model** | Nodes (entities) connected by relationships (edges) |
+| **Software** | Kuzu — an embedded graph database (like SQLite, but for graphs). Uses Cypher, the same query language as Neo4j. |
+| **How data is stored** | Student and Course nodes connected by `ENROLLED_IN` relationships. Each relationship carries score and semester as properties. Traversal queries are natural — "find all courses a student is enrolled in" is just following edges. |
+
+```python
+self.db = kuzu.Database("_db_files/kuzu_db")  # local file
+self.conn = kuzu.Connection(self.db)
+conn.execute("CREATE NODE TABLE Student (...)")
+conn.execute("CREATE REL TABLE ENROLLED_IN (FROM Student TO Course, ...)")
+conn.execute("CREATE (s:Student {name: $name, ...})", params)
+# Queries run via: conn.execute("MATCH (s:Student)...")
+```
+
+**Example query:**
+```cypher
+MATCH (s:Student)-[e:ENROLLED_IN]->(c:Course)
+WHERE e.score > 85
+RETURN s.name, c.name AS course, e.score;
+```
+
 ### Key-Value Store (Redis)
 
 | | |
@@ -141,30 +165,6 @@ self.store["scores:102"] = {"1": 88, "3": 90, ...}  # sorted set
 HGETALL student:1
 SMEMBERS student:1:courses
 ZRANGEBYSCORE scores:102 85 100
-```
-
-### Graph Database (Kuzu)
-
-| | |
-|---|---|
-| **Data Model** | Nodes (entities) connected by relationships (edges) |
-| **Software** | Kuzu — an embedded graph database (like SQLite, but for graphs). Uses Cypher, the same query language as Neo4j. |
-| **How data is stored** | Student and Course nodes connected by `ENROLLED_IN` relationships. Each relationship carries score and semester as properties. Traversal queries are natural — "find all courses a student is enrolled in" is just following edges. |
-
-```python
-self.db = kuzu.Database("_db_files/kuzu_db")  # local file
-self.conn = kuzu.Connection(self.db)
-conn.execute("CREATE NODE TABLE Student (...)")
-conn.execute("CREATE REL TABLE ENROLLED_IN (FROM Student TO Course, ...)")
-conn.execute("CREATE (s:Student {name: $name, ...})", params)
-# Queries run via: conn.execute("MATCH (s:Student)...")
-```
-
-**Example query:**
-```cypher
-MATCH (s:Student)-[e:ENROLLED_IN]->(c:Course)
-WHERE e.score > 85
-RETURN s.name, c.name AS course, e.score;
 ```
 
 ### Vector Database (ChromaDB)
@@ -232,8 +232,8 @@ Each enrollment links a student to a course with a score and semester. Scores ra
 | **Relational Database** (SQLite) | 3 normalized tables linked by foreign keys. Queries use JOINs to combine data across tables. |
 | **Wide Column Store** (Cassandra) | 4 denormalized tables, each designed for one query pattern. No JOINs — data is duplicated. |
 | **Document Database** (MontyDB) | 2 collections. Student documents contain a nested enrollments array — no JOINs needed. |
-| **Key-Value Store** (Redis) | Flat key-value pairs. Each entity is a hash. Sets track relationships; sorted sets rank by score. |
 | **Graph Database** (Kuzu) | Student and Course nodes connected by ENROLLED_IN edges. Queries traverse connections. |
+| **Key-Value Store** (Redis) | Flat key-value pairs. Each entity is a hash. Sets track relationships; sorted sets rank by score. |
 | **Vector Database** (ChromaDB) | Text embeddings of student bios and course descriptions for semantic similarity search. |
 
 ## Sample Questions to Try
