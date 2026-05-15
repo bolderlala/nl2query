@@ -659,7 +659,7 @@ st.sidebar.markdown(
 st.title("🗄️ NL2Query")
 st.markdown("**Same data. Six databases. Live queries.**  ·  MSBA Class 8 Demo")
 
-with st.expander("📖 How to Use This Demo"):
+with st.expander("📖 How to Use This Demo", expanded=True):
     st.markdown("""
 **What this app does** — it translates a plain-English question into executable queries
 for **six different database types**, then runs them live against real embedded databases
@@ -674,6 +674,36 @@ loaded with the same dataset.
 The sidebar lists the six data models; the **"View the dataset & schemas"** panel below
 shows the shared dataset and how each database stores it.
 """)
+
+# Data & schema viewer (placed above the input so users can browse the data before
+# composing a question).
+with st.expander("📋 View the dataset & schemas for all 6 databases"):
+    dbs = get_databases()
+    # tabs: 2 named (Data, One Student) + 6 schema tabs
+    data_tab, one_student_tab, *schema_tabs = st.tabs(
+        ["📊 The Data", "🔭 One Student · Six Ways"]
+        + [f"{DB_CLASSES[k].icon} {DB_CLASSES[k].name}" for k in DB_ORDER]
+    )
+    with data_tab:
+        st.markdown("**8 students, 5 courses, 22 enrollments — the same data in every database.**")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**Students**")
+            st.dataframe([{"ID": s["id"], "Name": s["name"], "Major": s["major"], "GPA": s["gpa"], "Year": s["year"], "Bio": s["bio"]} for s in STUDENTS], use_container_width=True, hide_index=True)
+        with c2:
+            st.markdown("**Courses**")
+            st.dataframe([{"ID": c["id"], "Name": c["name"], "Dept": c["department"], "Instructor": c["instructor"], "Description": c["description"]} for c in COURSES], use_container_width=True, hide_index=True)
+        st.markdown("**Enrollments**")
+        st.dataframe([{"Student": e["student_id"], "Course": e["course_id"], "Score": e["score"], "Semester": e["semester"]} for e in ENROLLMENTS], use_container_width=True, hide_index=True)
+    with one_student_tab:
+        _render_one_student_six_ways(dbs)
+    for tab, key in zip(schema_tabs, DB_ORDER):
+        db = dbs[key]
+        with tab:
+            st.markdown(f"**{db.description}**")
+            _render_schema(key, db)
+            st.markdown("**Example query:**")
+            st.code(db.example_query(), language=db.lang)
 
 st.divider()
 
@@ -739,35 +769,6 @@ if question in QUERY_STRENGTH:
     db_key, reason = QUERY_STRENGTH[question]
     cls = DB_CLASSES[db_key]
     st.caption(f"{cls.icon} **Best for {cls.name}** — {reason}")
-
-# Data & schema viewer
-with st.expander("📋 View the dataset & schemas for all 6 databases"):
-    dbs = get_databases()
-    # tabs: 2 named (Data, One Student) + 6 schema tabs
-    data_tab, one_student_tab, *schema_tabs = st.tabs(
-        ["📊 The Data", "🔭 One Student · Six Ways"]
-        + [f"{DB_CLASSES[k].icon} {DB_CLASSES[k].name}" for k in DB_ORDER]
-    )
-    with data_tab:
-        st.markdown("**8 students, 5 courses, 22 enrollments — the same data in every database.**")
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("**Students**")
-            st.dataframe([{"ID": s["id"], "Name": s["name"], "Major": s["major"], "GPA": s["gpa"], "Year": s["year"], "Bio": s["bio"]} for s in STUDENTS], use_container_width=True, hide_index=True)
-        with c2:
-            st.markdown("**Courses**")
-            st.dataframe([{"ID": c["id"], "Name": c["name"], "Dept": c["department"], "Instructor": c["instructor"], "Description": c["description"]} for c in COURSES], use_container_width=True, hide_index=True)
-        st.markdown("**Enrollments**")
-        st.dataframe([{"Student": e["student_id"], "Course": e["course_id"], "Score": e["score"], "Semester": e["semester"]} for e in ENROLLMENTS], use_container_width=True, hide_index=True)
-    with one_student_tab:
-        _render_one_student_six_ways(dbs)
-    for tab, key in zip(schema_tabs, DB_ORDER):
-        db = dbs[key]
-        with tab:
-            st.markdown(f"**{db.description}**")
-            _render_schema(key, db)
-            st.markdown("**Example query:**")
-            st.code(db.example_query(), language=db.lang)
 
 st.divider()
 
