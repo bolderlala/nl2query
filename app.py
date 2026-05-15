@@ -39,24 +39,6 @@ def load_api_key():
     return ""
 
 
-def check_password():
-    correct = _get_secret("CLASS_PASSWORD")
-    if not correct:
-        return True
-
-    if st.session_state.get("authenticated"):
-        return True
-
-    st.title("🗄️ NL2Query")
-    st.markdown("**MSBA Class 8 Demo** — enter the class password to continue.")
-    pwd = st.text_input("Class password:", type="password")
-    if pwd and pwd == correct:
-        st.session_state["authenticated"] = True
-        st.rerun()
-    elif pwd:
-        st.error("Incorrect password. Check Canvas for the class password.")
-    return False
-
 # ── Initialize databases (cached across reruns) ─────────────────────────────
 
 @st.cache_resource
@@ -405,6 +387,162 @@ def _render_schema(key, db):
         st.code(db.get_schema(), language="text")
 
 
+# ── "One Student · Six Ways" — the same record across all six models ────────
+
+_MODEL_FACTS = {
+    "sql": {
+        "unit": "A row in a normalized table",
+        "rel": "Foreign keys join `students` ↔ `enrollments` ↔ `courses` at query time",
+        "best": "Aggregations and multi-table joins",
+    },
+    "column": {
+        "unit": "A wide, denormalized row per query pattern",
+        "rel": "No joins — `student_name` & `course_name` are copied into every row",
+        "best": "High-volume reads on a known partition key",
+    },
+    "document": {
+        "unit": "One self-contained JSON document per student",
+        "rel": "Enrollments are nested *inside* the student document",
+        "best": "Flexible schemas and nested data",
+    },
+    "graph": {
+        "unit": "A node, connected by typed edges",
+        "rel": "`ENROLLED_IN` edges link Student → Course directly",
+        "best": "Multi-hop relationship traversals",
+    },
+    "kv": {
+        "unit": "Keys mapping to hashes and sets",
+        "rel": "Relationships live in separate keys (a set of course IDs)",
+        "best": "Direct, sub-millisecond lookups by key",
+    },
+    "vector": {
+        "unit": "An embedding vector + metadata",
+        "rel": "No explicit links — closeness is semantic similarity",
+        "best": "Finding records by meaning, not exact values",
+    },
+}
+
+
+def _student_enrollments(student_id):
+    """One student's enrollment rows, enriched with course name & department."""
+    cmap = {c["id"]: c for c in COURSES}
+    rows = []
+    for e in ENROLLMENTS:
+        if e["student_id"] == student_id:
+            c = cmap[e["course_id"]]
+            rows.append({
+                "course_id": e["course_id"], "course_name": c["name"],
+                "department": c["department"], "score": e["score"],
+                "semester": e["semester"],
+            })
+    return rows
+
+
+def _render_one_student_card(key, student, enrollments, dbs):
+    """One bordered card: the same student rendered in one data model.
+    Every card follows the same 5-part structure for easy side-by-side comparison."""
+    cls = DB_CLASSES[key]
+    facts = _MODEL_FACTS[key]
+    with st.container(border=True):
+        st.markdown(f"**{cls.icon} {cls.name}**")
+        st.caption(f"**Storage unit** — {facts['unit']}")
+
+        if key == "sql":
+            st.dataframe(
+                [{"student_id": student["id"], "name": student["name"],
+                  "major": student["major"], "gpa": student["gpa"], "year": student["year"]}],
+                use_container_width=True, hide_index=True,
+            )
+            st.dataframe(
+                [{"student_id": student["id"], "course_id": e["course_id"],
+                  "score": e["score"], "semester": e["semester"]} for e in enrollments],
+                use_container_width=True, hide_index=True,
+            )
+        elif key == "column":
+            st.dataframe(
+                [{"student_id": student["id"], "student_name": student["name"],
+                  "course_id": e["course_id"], "course_name": e["course_name"],
+                  "score": e["score"], "semester": e["semester"]} for e in enrollments],
+                use_container_width=True, hide_index=True,
+            )
+        elif key == "document":
+            st.json({
+                "_id": student["id"], "name": student["name"], "email": student["email"],
+                "major": student["major"], "gpa": student["gpa"], "year": student["year"],
+                "bio": student["bio"],
+                "enrollments": [
+                    {"course_id": e["course_id"], "course_name": e["course_name"],
+                     "score": e["score"], "semester": e["semester"]} for e in enrollments
+                ],
+            })
+        elif key == "graph":
+            lines = [f'(Student {{id: {student["id"]}, name: "{student["name"]}", gpa: {student["gpa"]}}})']
+            for e in enrollments:
+                lines.append(
+                    f'  -[:ENROLLED_IN {{score: {e["score"]}, semester: "{e["semester"]}"}}]->'
+                    f' (Course {{id: {e["course_id"]}, name: "{e["course_name"]}"}})'
+                )
+            st.code("\n".join(lines), language="text")
+        elif key == "kv":
+            course_ids = ", ".join(f'"{e["course_id"]}"' for e in enrollments)
+            lines = [
+                f'student:{student["id"]}            -> {{name: "{student["name"]}", '
+                f'major: "{student["major"]}", gpa: "{student["gpa"]}", year: "{student["year"]}"}}',
+                f'student:{student["id"]}:courses    -> {{{course_ids}}}  (set)',
+            ]
+            for e in enrollments:
+                lines.append(
+                    f'enrollment:{student["id"]}:{e["course_id"]}     -> '
+                    f'{{score: "{e["score"]}", semester: "{e["semester"]}"}}'
+                )
+            st.code("\n".join(lines), language="text")
+        elif key == "vector":
+            try:
+                got = dbs["vector"].client.get_collection("student_profiles").get(
+                    ids=[f"student_{student['id']}"], include=["documents", "embeddings"]
+                )
+                doc = got["documents"][0]
+                emb = got["embeddings"][0]
+                preview = ", ".join(f"{v:.4f}" for v in emb[:6])
+                st.code(
+                    f'id:        student_{student["id"]}\n'
+                    f'document:  "{doc}"\n'
+                    f'embedding: [{preview}, ...]  ({len(emb)} dimensions)\n'
+                    f'metadata:  {{name: "{student["name"]}", major: "{student["major"]}", '
+                    f'gpa: {student["gpa"]}, year: {student["year"]}}}',
+                    language="text",
+                )
+            except Exception:
+                st.code(
+                    f'id:        student_{student["id"]}\n'
+                    f'document:  "{student["bio"]}"\n'
+                    f'embedding: [ ... a high-dimensional vector ... ]\n'
+                    f'metadata:  {{name: "{student["name"]}", major: "{student["major"]}"}}',
+                    language="text",
+                )
+
+        st.caption(f"**Relationships** — {facts['rel']}")
+        st.caption(f"**Best at** — {facts['best']}")
+
+
+def _render_one_student_six_ways(dbs):
+    """Anchor on one student; show that same student rendered in all six models."""
+    names = [s["name"] for s in STUDENTS]
+    picked = st.selectbox("Follow one student across all six databases:", names,
+                          index=0, key="one_student_pick")
+    student = next(s for s in STUDENTS if s["name"] == picked)
+    enrollments = _student_enrollments(student["id"])
+    st.caption(
+        "The same student, stored six different ways — notice how the *structure* "
+        "changes while the *data* stays identical."
+    )
+    for row_keys in [DB_ORDER[:2], DB_ORDER[2:4], DB_ORDER[4:]]:
+        cols = st.columns(2)
+        for col, key in zip(cols, row_keys):
+            with col:
+                _render_one_student_card(key, student, enrollments, dbs)
+
+
 TEACHING_NOTE_PROMPT = """You are a professor's teaching assistant for a graduate analytics course comparing 6 database paradigms.
 
 Given a question, the generated query for a specific database, and its results, write a teaching note for each database that includes:
@@ -480,11 +618,6 @@ NO_RESULTS_HINTS = {
 
 
 
-# ── Password gate ───────────────────────────────────────────────────────────
-
-if not check_password():
-    st.stop()
-
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 
 api_key = load_api_key()
@@ -528,107 +661,93 @@ st.markdown("**Same data. Six databases. Live queries.**  ·  MSBA Class 8 Demo"
 
 with st.expander("📖 How to Use This Demo"):
     st.markdown("""
-### What This App Does
+**What this app does** — it translates a plain-English question into executable queries
+for **six different database types**, then runs them live against real embedded databases
+loaded with the same dataset.
 
-This app translates a **plain-English question** into executable queries for **six different database types** — and runs them live against real embedded databases loaded with the same dataset.
+**Steps**
+1. **Pick a sample question** above, or type your own.
+2. **Claude** translates it into six query languages simultaneously.
+3. **Click "Run"** on any tab to execute that query against a real database.
+4. **Click "Run All"** at the bottom to compare all six results side by side.
 
-### Steps
-
-1. **Type a question** in the text box below (or pick a sample from the dropdown)
-2. **Claude AI** translates your question into six query languages simultaneously
-3. **Click "Run"** on any tab to execute the query against a real database
-4. **Click "Run All"** at the bottom to compare results side by side
-
-### The Six Data Models
-
-| | Data Model | Query Language | Best For |
-|---|------------|---------------|----------|
-| 📊 | **Relational** (SQLite) | SQL with JOINs | Structured data, aggregations |
-| 📋 | **Wide Column** (Cassandra) | CQL — no JOINs, partition keys | High-volume, denormalized reads |
-| 📄 | **Document** (MontyDB) | MongoDB-style find() | Flexible schemas, nested data |
-| 🕸️ | **Graph** (Kuzu) | Cypher pattern matching | Relationships, traversals |
-| ⚡ | **Key-Value** (Redis) | GET/SET/HGETALL commands | Ultra-fast lookups by key |
-| 🧭 | **Vector** (ChromaDB) | Semantic similarity search | Finding by meaning, not keywords |
-
-### Sample Questions to Try
-
-Each question highlights a different database's strength — the icon shows which data model handles it best.
-
-| Question | Best DB | Why |
-|----------|---------|-----|
-| Find all students with a GPA above 3.7 | 📊 SQL | Simple WHERE filter |
-| Which students scored above 90 in Predictive Analytics? | 📊 SQL | JOIN + WHERE across tables |
-| Show all courses taught by Prof. Mousavi | 📋 Wide Column | Partition-key lookup |
-| Find students enrolled in both … and … | 🕸️ Graph | Pattern matching across edges |
-| What is the average score for each course? | 📊 SQL | GROUP BY + aggregation |
-| Who got the highest score in Deep Learning & NLP? | 📊 SQL | ORDER BY + LIMIT |
-| List all Business Analytics majors and their courses | 📄 Document | Nested enrollments array |
-| Find students whose interests relate to machine learning | 🧭 Vector | Semantic similarity on bios |
-| Find all students who share a course with Alice Chen | 🕸️ Graph | 2-hop traversal |
-| Look up the profile of student ID 1 | ⚡ Key-Value | Direct key lookup |
-
-### Exploring the Schemas
-
-Click **"View the dataset & schemas for all 6 databases"** below the question box to see:
-- **The Data** tab — the raw dataset (8 students, 5 courses, 22 enrollments)
-- **Each database tab** — how that data model stores the same data, with visual schema diagrams and example queries
-
-When you run a query, each result tab also has a **schema expander** showing the relevant schema for that database.
-
-### Teaching Notes
-
-After you run a query, each database tab shows a **💡 teaching note** that explains:
-- **What happened** — how this database handled the query and what pattern it used
-- **Why** — the design reason behind the behavior (e.g., "no secondary indexes" or "partition-key lookup")
-- **In production** — how real-world systems solve the same problem when the demo approach hits a limitation
-
-**How to use them for learning:**
-1. **Run the same question across all 6 tabs** and read the teaching notes side by side — notice where each database shines vs. struggles
-2. **Start with a question that favors one DB** (check the icon in the sample dropdown), then ask yourself: *why is this hard for the others?*
-3. **Pay attention to "In production" hints** — they bridge the gap between this demo and real-world systems (e.g., Redis Search module, MongoDB aggregation pipelines, Cassandra secondary indexes)
-4. **Try "Run All"** at the bottom to compare all 6 results and notes in a single view — great for spotting trade-offs at a glance
-
-### Key Takeaway
-
-**The same question produces very different syntax depending on the data model.**
-Relational databases use JOINs. Document databases use nested JSON filters. Key-value stores use direct key lookups.
-Graph databases match relationship patterns. Vector databases search by semantic similarity.
-The data model determines the query language — and understanding this is what makes you a polyglot data professional.
+The sidebar lists the six data models; the **"View the dataset & schemas"** panel below
+shows the shared dataset and how each database stores it.
 """)
 
 st.divider()
 
-# Input
+# ── Input ────────────────────────────────────────────────────────────────────
 _STRENGTH_ICONS = {k: DB_CLASSES[k].icon for k in DB_ORDER}
 
 def _format_sample(q):
     if not q:
-        return ""
+        return "▾ More sample questions"
     strength = QUERY_STRENGTH.get(q)
     if strength:
         return f"{_STRENGTH_ICONS[strength[0]]} {q}"
     return q
 
-col_q, col_s = st.columns([3, 1])
-with col_q:
-    user_q = st.text_input("Ask a question about the student data:",
-                           placeholder="e.g., Find all students with a GPA above 3.7")
-with col_s:
-    st.markdown("**Try a sample:**")
-    sample = st.selectbox("Samples", [""] + SAMPLE_QUESTIONS, label_visibility="collapsed",
-                          format_func=_format_sample)
+# One curated sample per paradigm (first match in DB_ORDER); the rest go in the dropdown.
+def _curated_samples():
+    picked = []
+    for key in DB_ORDER:
+        for q in SAMPLE_QUESTIONS:
+            strength = QUERY_STRENGTH.get(q)
+            if strength and strength[0] == key and q not in picked:
+                picked.append(q)
+                break
+    return picked
 
-question = user_q or sample
+_CURATED_SAMPLES = _curated_samples()
+_MORE_SAMPLES = [q for q in SAMPLE_QUESTIONS if q not in _CURATED_SAMPLES]
 
-if sample and sample in QUERY_STRENGTH:
-    db_key, reason = QUERY_STRENGTH[sample]
+# Single source of truth for the question — written by the chip / dropdown callbacks.
+if "question_input" not in st.session_state:
+    st.session_state["question_input"] = ""
+
+def _set_question(q):
+    st.session_state["question_input"] = q
+
+def _pick_more_sample():
+    q = st.session_state.get("more_samples_box", "")
+    if q:
+        st.session_state["question_input"] = q
+        st.session_state["more_samples_box"] = ""
+
+st.markdown("#### 1 · Pick a question to get started")
+chip_cols = None
+for i, q in enumerate(_CURATED_SAMPLES):
+    if i % 2 == 0:
+        chip_cols = st.columns(2)
+    with chip_cols[i % 2]:
+        st.button(_format_sample(q), key=f"chip_{i}", on_click=_set_question,
+                  args=(q,), use_container_width=True)
+
+st.selectbox("More sample questions", [""] + _MORE_SAMPLES, key="more_samples_box",
+             format_func=_format_sample, on_change=_pick_more_sample,
+             label_visibility="collapsed")
+
+st.markdown("**…or type your own question:**")
+st.text_input("Your question", key="question_input",
+              placeholder="e.g., Find all students with a GPA above 3.7",
+              label_visibility="collapsed")
+
+question = st.session_state.get("question_input", "").strip()
+
+if question in QUERY_STRENGTH:
+    db_key, reason = QUERY_STRENGTH[question]
     cls = DB_CLASSES[db_key]
     st.caption(f"{cls.icon} **Best for {cls.name}** — {reason}")
 
 # Data & schema viewer
 with st.expander("📋 View the dataset & schemas for all 6 databases"):
     dbs = get_databases()
-    data_tab, *schema_tabs = st.tabs(["📊 The Data"] + [f"{DB_CLASSES[k].icon} {DB_CLASSES[k].name}" for k in DB_ORDER])
+    # tabs: 2 named (Data, One Student) + 6 schema tabs
+    data_tab, one_student_tab, *schema_tabs = st.tabs(
+        ["📊 The Data", "🔭 One Student · Six Ways"]
+        + [f"{DB_CLASSES[k].icon} {DB_CLASSES[k].name}" for k in DB_ORDER]
+    )
     with data_tab:
         st.markdown("**8 students, 5 courses, 22 enrollments — the same data in every database.**")
         c1, c2 = st.columns(2)
@@ -640,6 +759,8 @@ with st.expander("📋 View the dataset & schemas for all 6 databases"):
             st.dataframe([{"ID": c["id"], "Name": c["name"], "Dept": c["department"], "Instructor": c["instructor"], "Description": c["description"]} for c in COURSES], use_container_width=True, hide_index=True)
         st.markdown("**Enrollments**")
         st.dataframe([{"Student": e["student_id"], "Course": e["course_id"], "Score": e["score"], "Semester": e["semester"]} for e in ENROLLMENTS], use_container_width=True, hide_index=True)
+    with one_student_tab:
+        _render_one_student_six_ways(dbs)
     for tab, key in zip(schema_tabs, DB_ORDER):
         db = dbs[key]
         with tab:
@@ -821,11 +942,3 @@ else:
                     if note:
                         st.caption(f"💡 {note}")
             st.divider()
-
-    st.divider()
-    st.caption(
-        "💡 **Same question, same data, six different query languages.** "
-        "Relational databases use JOINs. Wide column stores use denormalized tables with partition keys. "
-        "Document databases use nested JSON filters. Key-value stores use direct key lookups. "
-        "Graph databases match relationship patterns. Vector databases search by semantic similarity."
-    )
