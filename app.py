@@ -666,7 +666,7 @@ for **six different database types**, then runs them live against real embedded 
 loaded with the same dataset.
 
 **Steps**
-1. **Pick a sample question** above, or type your own.
+1. **Pick a sample question** below, or type your own.
 2. **Claude** translates it into six query languages simultaneously.
 3. **Click "Run"** on any tab to execute that query against a real database.
 4. **Click "Run All"** at the bottom to compare all six results side by side.
